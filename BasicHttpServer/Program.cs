@@ -19,6 +19,7 @@ namespace BasicHttpServer
 
             BasicHttpServer server = new BasicHttpServer( "http://localhost:8080" );
             server.HandleFiles( baseDir );
+            server.RegisterAPIHandler( "test", new TestAPI() );
 
             await server.Start();
         }

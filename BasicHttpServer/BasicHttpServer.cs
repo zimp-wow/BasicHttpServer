@@ -4,6 +4,8 @@ using System.Threading.Tasks;
 using System.Net;
 using System.IO;
 using System.Net.Mime;
+using System.Net.Http;
+using System.Reflection;
 
 namespace BasicHttpServer
 {
@@ -11,7 +13,7 @@ namespace BasicHttpServer
 	{
 		private string _prefix;
 		private string _baseDir = null;
-		private Dictionary<string, APIHandler> _registeredHandlers = new Dictionary<string, APIHandler>();
+		private Dictionary<string, HandlerMapping> _registeredHandlers = new Dictionary<string, HandlerMapping>();
 
 		private static Logger.LogFunc Log = Logger.BuildClassLogger( "BasicHttpServer" );
 
@@ -41,14 +43,33 @@ namespace BasicHttpServer
 		/// </summary>
 		/// <param name="name">The name of the API.  Combined with the prefix to construct the path to the API</param>
 		/// <param name="handler">The handler that will process the request.</param>
-		public void RegisterAPIHandler( string name, APIHandler handler ) {
-			_registeredHandlers[ name ] = handler;
+		public void RegisterAPIHandler( string name, object handlerClass ) {
+			if( !name.EndsWith( "/" ) ) {
+				name += "/";
+			}
+
+			HandlerMapping mapping = new HandlerMapping( name, handlerClass );
+			if( _registeredHandlers.ContainsKey( name ) ) {
+				mapping = _registeredHandlers[ name ];
+			}
+
+			MethodInfo[] methods = handlerClass.GetType().GetMethods();
+			Type attType = typeof( APIHandlerAttribute );
+			foreach( MethodInfo method in methods ) {
+				APIHandlerAttribute att = method.GetCustomAttribute( attType ) as APIHandlerAttribute;
+				if( att == null ) {
+					continue;
+				}
+
+				mapping.AddMapping( att.Method, att.Name, method );
+			}
+
+			_registeredHandlers[ name ] = mapping;
 		}
 
 		public async Task Start() {
 			HttpListener listener = new HttpListener();
 			listener.Prefixes.Add( _prefix );
-			//TODO: Add prefixes for APIs?
 
 			listener.Start();
 
@@ -61,7 +82,13 @@ namespace BasicHttpServer
 			Log( "ProcessRequest", "Request received: " + context.Request.Url.PathAndQuery );
 			HttpListenerRequest request = context.Request;
 
-			//TODO: Match up the first segment with an API Handler
+			if( request.Url.Segments.Length > 2 ) {
+				string apiSegment = request.Url.Segments[1];
+				if( _registeredHandlers.TryGetValue( apiSegment, out HandlerMapping mapping ) ) {
+					mapping.Invoke( context );
+					return;
+				}
+			}
 
 			if( _baseDir == null ) {
 				await WriteResponse( context.Response, "Server not configured to host static content", 500 );
@@ -113,10 +140,73 @@ namespace BasicHttpServer
 			}
 		}
 
-		private async Task WriteResponse( HttpListenerResponse response, string message, int statusCode ) {
+		private static async Task WriteResponse( HttpListenerResponse response, string message, int statusCode ) {
 			response.StatusCode = statusCode;
 			using( StreamWriter sw = new StreamWriter( response.OutputStream ) ) {
 				await sw.WriteLineAsync( message );
+			}
+		}
+
+		private class HandlerMapping {
+			private string Name;
+			private object TargetInstance;
+			private Dictionary<string, MethodInfo> mappedHandlers = new Dictionary<string, MethodInfo>();
+
+			private static Logger.LogFunc Log = Logger.BuildClassLogger( "HandlerMapping" );
+
+			public HandlerMapping( string name, object instance ) {
+				Name           = name;
+				TargetInstance = instance;
+			}
+
+			public void AddMapping( string method, string apiPath, MethodInfo targetMethod ) {
+				mappedHandlers[ConstructKey( method, apiPath )] = targetMethod;
+			}
+
+			private string ConstructKey( string method, string apiPath ) {
+				if( !apiPath.EndsWith( "/" ) ) {
+					apiPath += "/";
+				}
+
+				return $"{ method.ToLower() }_{apiPath}";
+			}
+
+			public async void Invoke( HttpListenerContext context ) {
+				string method = context.Request.HttpMethod;
+				string apiPath = null;
+				bool nextOne = false;
+				foreach( string segment in context.Request.Url.Segments ) {
+					if( nextOne ) {
+						apiPath = segment;
+						break;
+					}
+					if( segment == Name ) {
+						nextOne = true;
+					}
+				}
+
+				if( apiPath == null ) {
+					Log( "Invoke", $"Failed to discover API name for request: { context.Request.Url.PathAndQuery }" );
+					await WriteResponse( context.Response, "Could not determine API name", 400 );
+					return;
+				}
+
+				if( mappedHandlers.TryGetValue( ConstructKey( method, apiPath ), out MethodInfo targetMethod ) ) {
+					try {
+						object retVal = targetMethod.Invoke( TargetInstance, new object[] { context } );
+						if( retVal is Task task ) {
+							await task;
+						}
+					}
+					catch( Exception e ) {
+						Log( "Invoke", "Method invocation failed", e );
+						await WriteResponse( context.Response, "Failed to invoke API", 500 );
+					}
+
+					return;
+				}
+
+				await WriteResponse( context.Response, "API method not found", 404 );
 			}
 		}
 	}

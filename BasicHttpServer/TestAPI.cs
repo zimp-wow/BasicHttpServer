@@ -11,12 +11,22 @@ namespace BasicHttpServer
 {
 	class TestAPI
 	{
+		private static Logger.LogFunc Log = Logger.BuildClassLogger( "TestAPI" );
+
+		private class TestObj {
+			public string RequestArg { get; set; }
+		}
+
 		[APIHandler( "GET", "test" )]
 		public async Task Test( HttpListenerContext context ) {
-			using( StreamWriter sw = new StreamWriter( context.Response.OutputStream ) ) {
-				await sw.WriteLineAsync( "Test API" );
-				context.Response.StatusCode = 200;
-			}
+			TestObj reqObj = await APIUtil.DeserializeRequest<TestObj>( context.Request );
+			Log( "Test", "API invoked with argument: " + reqObj.RequestArg );
+
+			object respObj = new {
+				Test = "test"
+			};
+			context.Response.StatusCode = 200;
+			await APIUtil.JsonResponse( respObj, context.Response );
 		}
 	}
 }

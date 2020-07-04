@@ -6,7 +6,7 @@ using System.Threading.Tasks;
 
 namespace BasicHttpServer
 {
-    class Logger
+    public class Logger
     {
         private static Action<string> _handler = null;
 

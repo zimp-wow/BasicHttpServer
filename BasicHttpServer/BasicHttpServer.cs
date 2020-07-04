@@ -6,10 +6,11 @@ using System.IO;
 using System.Net.Mime;
 using System.Net.Http;
 using System.Reflection;
+using System.Security.Cryptography.X509Certificates;
 
 namespace BasicHttpServer
 {
-	class BasicHttpServer
+	public class BasicHttpServer
 	{
 		private string _prefix;
 		private string _baseDir = null;
@@ -197,6 +198,7 @@ namespace BasicHttpServer
 						if( retVal is Task task ) {
 							await task;
 						}
+						context.Response.Close();
 					}
 					catch( Exception e ) {
 						Log( "Invoke", "Method invocation failed", e );

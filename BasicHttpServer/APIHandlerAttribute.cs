@@ -9,7 +9,7 @@ using System.Threading.Tasks;
 namespace BasicHttpServer
 {
     [System.AttributeUsage( System.AttributeTargets.Method )]
-    class APIHandlerAttribute : System.Attribute
+    public class APIHandlerAttribute : System.Attribute
     {
         public string Method;
         public string Name;

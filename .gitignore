@@ -1,4 +1,6 @@
 .vs
 BasicHttpServer/bin
 BasicHttpServer/obj
+BasicHttpServerCore/bin
+BasicHttpServerCore/obj
 packages

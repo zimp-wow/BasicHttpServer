@@ -141,7 +141,7 @@ namespace BasicHttpServerCore
 			}
 		}
 
-		private static async Task WriteResponse( HttpListenerResponse response, string message, int statusCode ) {
+		public static async Task WriteResponse( HttpListenerResponse response, string message, int statusCode ) {
 			response.StatusCode = statusCode;
 			using( StreamWriter sw = new StreamWriter( response.OutputStream ) ) {
 				await sw.WriteLineAsync( message );
